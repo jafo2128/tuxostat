@@ -7,4 +7,9 @@ abandoned linux/python thermostat project
 
 This was a project of mine quite a few years ago to write a thermostat in Python. It was developed for my apartment in college, which I shared with three roommates; the idea was to determine the union of all of our class and work schedules, and program the thermostat to only heat/cool the apartment when someone was there. This was before Linux-capable embedded systems were easy to obtain, so it ran on an old desktop sitting on the floor under where the original thermostat was. The project "worked" - we used it for a month or so - but had only a command-line interface available over SSH, so we ended up going back to the "normal" thermostat. I never took this further, but some of the code here might be useful.
 
-I've discarded all history when I imported this to Git; I just imported a checkout of the CVS repository. What's here is actually a partial backup of the filesystem that ran this thing. The important parts are under
+I've discarded all history when I imported this to Git; I just imported a checkout of the CVS repository. What's here is actually a partial backup of the filesystem that ran this thing. The important parts are under:
+
+* https://github.com/jantman/tuxostat/blob/master/fs_backup/usr/lib/python2.4/site-packages/tuxostat
+* https://github.com/jantman/tuxostat/blob/master/fs_backup/home/tuxostat/bin
+
+It uses the [Phidgets Python libraries](http://www.phidgets.com/docs/Language_-_Python) (I'm sure ancient versions) to control the Phidgets USB relays, and uses something that [I wrote](https://github.com/jantman/tuxostat/blob/master/fs_backup/usr/lib/python2.4/site-packages/tuxostat/crystalfontz635usb.py) to control a [CrystalFontz CF635 USB LCD display](https://www.crystalfontz.com/product/XES635BKTMFKU).
