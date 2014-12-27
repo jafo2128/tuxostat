@@ -1,0 +1,203 @@
+#!/usr/bin/env python
+
+# tos-status-html
+#  TuxOstat script to output current status in HTML
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-06-17 16:00:00 tuxostat"
+#  $Id: tos-status-html,v 1.2 2008/07/18 00:34:16 jantman Exp $
+
+
+#
+# IMPORTS
+#
+import os
+
+os.environ['PYTHON_EGG_CACHE'] = '/tmp'
+
+import sys, string, warnings, time, getpass
+
+from tuxostat.tosSched import tosSched
+from tuxostat.tosZones import tosZones
+import cPickle as pickle
+import _mysql
+from tuxostat.crystalfontz635usb import crystalfontz635usb as CF635
+from tuxostat.tosRelayControl import tosRelayControl
+from tuxostat.tosOverrides import tosOverrides
+
+#
+# GLOBAL VARIABLES
+#
+ZONES = None
+OVERRIDES = None
+
+def showStatus():
+    """
+    This function provides an all-in-one view of system status
+    """
+    print "================================================================================"
+    print "=============================tuxOstat SYSTEM STATUS============================="
+    print "================================================================================"
+    print ""
+    # relays state
+    # ENV TEMPS and RELAYS
+    # relays
+    trc = tosRelayControl()
+    if trc.GetOutputState(0) is True:
+        state0 = "ON"
+    else:
+        state0 = "OFF"
+    if trc.GetOutputState(1) is True:
+        state1 = "ON"
+    else:
+        state1 = "OFF"
+    if trc.GetOutputState(2) is True:
+        state2 = "ON"
+    else:
+        state2 = "OFF"
+    trc.close()
+
+    global ZONES
+    myZones = ZONES.GetZones()
+    # unpickle the zone data
+    f2 = file("/var/local/tuxostat/zones/tempsF.pkl", 'rb')
+    zoneData = pickle.load(f2)
+    f2.close()
+    tempData = {}
+    count = 0
+    for i in myZones:
+        tempData[count] = {"Name": i["Name"], "Temp": zoneData[count]}
+        count = count + 1
+
+    print "---------ENV TEMPS---------\t---SYSTEM OUTPUTS (RELAYS)---"
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[0]["Name"], tempData[0]["Temp"], "Fan", state0)
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[1]["Name"], tempData[1]["Temp"], "Cool", state1)
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[2]["Name"], tempData[2]["Temp"], "Heat", state2)
+    print ""
+
+    print "----------------------------------STATE FILES-----------------------------------"
+
+    if os.path.exists("/var/local/tuxostat/cool_stop"):
+        midnight = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        mtime = os.path.getmtime("/var/local/tuxostat/cool_stop")
+        if mtime > midnight:
+            print " LAST SYSTEM STOP: "+time.strftime("%H:%M:%S", time.localtime(mtime))+" today"
+        else:
+            print " LAST SYSTEM STOP: "+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+    elif os.path.exists("/var/local/tuxostat/cool_run"):
+        midnight = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        mtime = os.path.getmtime("/var/local/tuxostat/cool_run")
+        if mtime > midnight:
+            print " SYSTEM RUNNING SINCE: "+time.strftime("%H:%M:%S", time.localtime(mtime))+" today"
+        else:
+            print " SYSTEM RUNNING SINCE: "+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+
+    print ""
+    print "------------------------------------DATABASE------------------------------------"
+
+    # count runs is last 24h
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT COUNT(PKey) FROM runlog WHERE timestamp >= "+str((int(time.time()) - 86400))+" AND type=1 AND system=\"ac\";"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    acRunCount = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT COUNT(PKey) FROM runlog WHERE timestamp >= "+str((int(time.time()) - 86400))+" AND type=1 AND system=\"fan\";"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    fanRunCount = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT type FROM runlog WHERE system=\"fan\" ORDER BY PKey DESC LIMIT 1;"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    fanDBstate = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT type FROM runlog WHERE system=\"ac\" ORDER BY PKey DESC LIMIT 1;"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    acDBstate = myrow[0][0]
+    db.close()
+    print " RUNS IN LAST 24H:\t\tFan: "+str(fanRunCount)+"\tAC: "+str(acRunCount)
+    if fanDBstate == "0":
+        fanState = "off"
+    else:
+        fanState = "ON"
+    if acDBstate == "0":
+        acState = "off"
+    else:
+        acState = "ON"
+    print " Current state (as per DB): \tFan: "+fanState+"\tAC: "+acState
+    
+    # MANUAL OVERRIDE
+    global OVERRIDES
+    global SCHEDULE
+    myManOverride = OVERRIDES.GetManualOverride()
+
+    if myManOverride is not False and myManOverride is not None:
+        # we have a manual override
+        print ""
+        print "--------------------------------MANUAL OVERRIDE---------------------------------"
+        start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["StartTS"]))
+        end = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["EndTS"]))
+        created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["createdTS"]))
+        print "MANUAL OVERRIDE"
+        print "starting at "+start+" and ending at "+end
+        print "Temp set to: "+str(myManOverride["Temp"])+"F\tHVACmode: "+SCHEDULE.HVACmodes[myManOverride["HVACmode"]]
+        print "Created at "+created+" by "+myManOverride["createdBy"]
+        print "  Note:"+myManOverride["note"]
+
+    # SCHEDULE
+    print ""
+    print "--------------------------------CURRENT SCHEDULE--------------------------------"
+    taskID = SCHEDULE.GetCurrentTaskID()
+    task = SCHEDULE.GetTaskByID(taskID)
+    if taskID == (SCHEDULE.GetScheduleNumTasks() - 1):
+        nextTaskID = 0
+    else:
+        nextTaskID = taskID + 1
+    nextTask = SCHEDULE.GetTaskByID(nextTaskID)
+
+    if nextTaskID == (SCHEDULE.GetScheduleNumTasks() - 1):
+        nextNextTaskID = 0
+    else:
+        nextNextTaskID = nextTaskID + 1
+    nextNextTask = SCHEDULE.GetTaskByID(nextNextTaskID)
+    
+    print "CURRENT TASK:"
+    print " "+task["Name"]+" ("+str(taskID)+" )\tDay: "+SCHEDULE.days[task["Day"]]+"\tStart: "+task["Time"]+"\tEnd: "+nextTask["Time"]
+    print " Temp: "+str(task["Temp"])+"\t TempMode: "+SCHEDULE.tempModes[task["TempMode"]]+"\t\tZone: "+task["Zone"]+"\t\tZone Mode: "+SCHEDULE.zoneModes[task["ZoneMode"]]
+    print " HVAC Mode: "+SCHEDULE.HVACmodes[task["HVACmode"]]
+
+    print "NEXT TASK:"
+    print " "+nextTask["Name"]+" ("+str(nextTaskID)+" )\tDay: "+SCHEDULE.days[nextTask["Day"]]+"\tStart: "+nextTask["Time"]+"\tEnd: "+nextNextTask["Time"]
+    print " Temp: "+str(nextTask["Temp"])+"\t TempMode: "+SCHEDULE.tempModes[nextTask["TempMode"]]+"\t\tZone: "+nextTask["Zone"]+"\t\tZone Mode: "+SCHEDULE.zoneModes[nextTask["ZoneMode"]]
+    print " HVAC Mode: "+SCHEDULE.HVACmodes[nextTask["HVACmode"]]
+    
+    # taskID
+    # set temp
+    # TM/ZM/ZONE
+    # next task time, temp
+    # TODO: Manual Overrides?
+    # TODO: Sched Overrides?
+    print "================================================================================"
+
+
+# ignore the phidgets warnings
+warnings.simplefilter("ignore", Warning)
+
+SCHEDULE = tosSched() # instantiate the schedule object
+ZONES = tosZones()
+OVERRIDES = tosOverrides()
+
+showStatus()

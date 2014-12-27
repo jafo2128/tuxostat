@@ -1,0 +1,21 @@
+
+[input2]
+0=/usr/local/bin/
+
+[input-def]
+0=*
+
+[Dir Hist New Left Panel]
+0=/home/tuxostat/bin
+1=/usr/local/bin
+
+[Dir Hist New Right Panel]
+0=/home/tuxostat/bin
+1=/home/tuxostat
+2=/home
+3=/
+4=/usr
+5=/usr/lib
+6=/usr/lib/python2.4
+7=/usr/lib/python2.4/site-packages
+8=/usr/lib/python2.4/site-packages/tuxostat

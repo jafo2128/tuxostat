@@ -1,0 +1,89 @@
+Installing Debian for TuxOstat
+Time-stamp: "2008-06-02 19:10:02 jantman"
+
+1) Install Debian via installer, mostly default options, default packages.
+2) `apt-get install ssh`
+3) `apt-get install sudo`
+4) `apt-get install emacs`
+5) edit /etc/sudoers as necessary - specifically, I allowed the wheel group ALL
+NOPASSWD with: "%wheel ALL=(ALL) NOPASSWD: ALL"
+6) download Webmin, install all dependencies, then `dpkg -i webmin*.deb`
+7) Through Webmin, add users 'operator' and 'tuxostat', both members of group
+'tuxostat'. Secondary groups are uucp, dialout, cdrom, users.
+---OWFS stuff---
+1) apt-get install gcc autoconf make automake g++ swig libtool
+2) apt-get install dpkg-dev (for installing source packages)
+3) apt-get install libusb-dev (will also install libc6-dev
+linux-kernel-headers)
+FOLLOW INSTRUCTIONS at: http://owfs.sourceforge.net/install.html
+4) apt-get install cvs
+5) apt-get install php5 php5-cli php5-dev python-dev
+6) Download the FUSE tarball from SourceForge to /usr/local/src/fuse
+7) configure, make, make install
+8) Download the latest OWFS tarball to /usr/local/src/owfs
+9) ./botstrap; ./configure --enable-usb --enable-owfs --enable-owpython
+--enable-owperl --enable-owphp
+
+
+Output from ./configure:
+"
+Current configuration:
+
+    Deployment location: /opt/owfs
+
+Compile-time options:
+                  Caching is enabled
+                      USB is enabled
+                      I2C is enabled
+                   HA7Net is enabled
+           Multithreading is enabled
+    Parallel port DS1410E is enabled
+        TAI8570 barometer is enabled
+             Thermocouple is enabled
+         Zeroconf/Bonjour is enabled
+             Debug-output is enabled
+                Profiling is DISABLED
+
+Module configuration:
+                    owlib is enabled
+                  owshell is enabled
+                     owfs is enabled
+                  owhttpd is enabled
+                   owftpd is enabled
+                 owserver is enabled
+                    ownet is enabled
+                 ownetlib is enabled
+                    owtap is enabled
+                    owmon is enabled
+                   owcapi is enabled
+                     swig is enabled
+                   owperl is enabled
+                    owphp is enabled
+                 owpython is enabled
+                    owtcl is DISABLED
+"
+
+10) make; make check
+***ERRORS:***
+make[4]: Entering directory `/usr/local/src/owfs-2.7p4/module/owshell/src/c'
+make[4]: LIBTOOL@: Command not found
+make[4]: *** [owdir] Error 127
+make[4]: Leaving directory `/usr/local/src/owfs-2.7p4/module/owshell/src/c'
+make[3]: *** [install-recursive] Error 1
+make[3]: Leaving directory `/usr/local/src/owfs-2.7p4/module/owshell/src'
+make[2]: *** [install-recursive] Error 1
+make[2]: Leaving directory `/usr/local/src/owfs-2.7p4/module/owshell'
+make[1]: *** [install-recursive] Error 1
+make[1]: Leaving directory `/usr/local/src/owfs-2.7p4/module'
+make: *** [install-recursive] Error 1
+
+
+11) make install
+
+----------Might work, might not. Paused here.----------
+1) apt-get install mysql-client
+
+
+
+
+----------Back to OWFS...------------------------------

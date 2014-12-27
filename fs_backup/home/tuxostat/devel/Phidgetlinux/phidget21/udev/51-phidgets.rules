@@ -1,0 +1,93 @@
+ACTION!="add", GOTO="libphidgets_rules_end"
+
+# PhidgetInterfaceKit - 8x8x8
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0045", MODE="666"
+# PhidgetInterfaceKit - 0x0x4
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0040", MODE="666"
+# PhidgetInterfaceKit - 0x16x16
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0044", MODE="666"
+# PhidgetInterfaceKit - 0x5x7
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0051", MODE="666"
+# PhidgetInterfaceKit - touch slider
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0076", MODE="666"
+# PhidgetInterfaceKit - touch rotation
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0077", MODE="666"
+# PhidgetInterfaceKit - joystick
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007C", MODE="666"
+# PhidgetInterfaceKit - 0/0/8
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0081", MODE="666"
+
+# PhidgetAccelerometer
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0071", MODE="666"
+# PhidgetAccelerometer - 3-axis
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007E", MODE="666"
+# PhidgetAccelGyro
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007F", MODE="666"
+# PhidgetGyroscope
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0075", MODE="666"
+
+# PhidgetTextLCD
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0051", MODE="666"
+# PhidgetTextLCD
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0052", MODE="666"
+# PhidgetTextLCD
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0053", MODE="666"
+# PhidgetTextLCD - with 8/8/8
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007D", MODE="666"
+# PhidgetTextLED
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0049", MODE="666"
+# PhidgetTextLED
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0048", MODE="666"
+
+# PhidgetRFID
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0030", MODE="666"
+# PhidgetRFID
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0031", MODE="666"
+
+# PhidgetLED
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="004A", MODE="666"
+
+# PhidgetEncoder
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="004B", MODE="666"
+# PhidgetEncoder - 4
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0078", MODE="666"
+# PhidgetEncoder - high speed
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0080", MODE="666"
+
+# PhidgetServo - 4 Motor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0038", MODE="666"
+# PhidgetServo - 1 Motor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0039", MODE="666"
+# PhidgetStepper
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0047", MODE="666"
+# PhidgetStepper - Unipolar
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007A", MODE="666"
+# PhidgetStepper - Bipolar
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="007B", MODE="666"
+# PhidgetMotorControl
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0058", MODE="666"
+# PhidgetMotorControl - HC
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0059", MODE="666"
+# PhidgetAdvancedServo
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="003A", MODE="666"
+
+# PhidgetTemperatureSensor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0070", MODE="666"
+# PhidgetWeigthSensor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0072", MODE="666"
+# PhidgetHumiditySensor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0073", MODE="666"
+# PhidgetPHSensor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0074", MODE="666"
+# PhidgetGPSSensor
+ATTRS{idVendor}=="06c2", ATTRS{idProduct}=="0079", MODE="666"
+
+# OBSOLETE:
+# PhidgetInterfaceKit
+ATTRS{idVendor}=="0925", ATTRS{idProduct}=="8201", MODE="666"
+# PhidgetServo - 1 Motor
+ATTRS{idVendor}=="0925", ATTRS{idProduct}=="8101", MODE="666"
+# PhidgetServo - 4 Motor
+ATTRS{idVendor}=="0925", ATTRS{idProduct}=="8104", MODE="666"
+
+LABEL="libphidgets_rules_end"

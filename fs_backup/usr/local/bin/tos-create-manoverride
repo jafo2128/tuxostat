@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+
+# tos-create-manoverride
+#  TuxOstat administrative console
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-07-13 02:05:19 tuxostat"
+#  $Id: tos-create-manoverride,v 1.1 2008/07/18 00:34:47 jantman Exp $
+
+# ARGUMENT FORM:
+# tos-create-manoverride action [until (INT)] [temp (INT)] [memo]
+
+#
+# IMPORTS
+#
+import os, sys, string, warnings, time, getpass
+
+import cPickle as pickle
+from tuxostat.tosOverrides import tosOverrides
+
+def removeManOverride(memo):
+    """
+    Removes the current man override.
+    """
+    global OVERRIDES
+    OVERRIDES.RemoveManOverride()
+    OVERRIDES.WriteManualOverride(None)
+
+def turnOff(untilTS, memo):
+    """
+    turn system off
+    """
+    global OVERRIDES
+    OVERRIDES.SetManOverride(None, time.time(), untilTS, 100, 4, "webGUI", memo)
+    OVERRIDES.WriteManualOverride(None)
+    
+def cool(untilTS, temp, memo):
+    """
+    set system to cool
+    """
+    global OVERRIDES
+    OVERRIDES.SetManOverride(None, time.time(), untilTS, temp, 1, "webGUI", memo)
+    OVERRIDES.WriteManualOverride(None)
+
+
+#
+# GLOBAL VARIABLES
+#
+
+OVERRIDES = tosOverrides()
+
+if len(sys.argv) > 2:
+    untilTS = int(sys.argv[2])
+else:
+    untilTS = int(time.time())+18000
+
+if len(sys.argv) > 3:
+    temp = int(sys.argv[3])
+else:
+    temp = 77
+    
+if len(sys.argv) > 4:
+    memo = sys.argv[4]
+else:
+    memo = "no memo"
+
+if sys.argv[1] == "remove":
+    removeManOverride(memo)
+elif sys.argv[1] == "turnoff":
+    turnOff(untilTS, memo)
+elif sys.argv[1] == "cool":
+    cool(untilTS, temp, memo)
+    

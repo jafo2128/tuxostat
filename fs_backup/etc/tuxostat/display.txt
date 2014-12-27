@@ -1,0 +1,19 @@
+    ____________________________________________________________
+   /                                                  _          \
+  | 1 O   ____________________________               /6\          |
+  |      |                            |              ---          |
+  | 2 O  |                            |          _          _     |
+  |      |           5                |         /7|  /  \  |9\    |
+  | 3 O  |                            |         \_|  \10/  | /    |
+  |      |                            |      __                   |
+  | 4 O  |____________________________|     /11\     ---          |
+  |                                         \__/     \8/          |
+   \_____________________________________________________________/
+   
+
+   1 - LED1 - Something			6 - Up (Temperature/Value)
+   2 - LED2 - Something			7 - Left (cycle through menu)
+   3 - LED3 - Something			8 - Down (Temperature/Value)
+   4 - LED4 - Something			9 - Right (cycle through menu)
+   5 - Display				10 - OK / Enter
+       					11 - Cancel / Back

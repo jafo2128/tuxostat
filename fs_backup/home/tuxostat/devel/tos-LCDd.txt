@@ -1,0 +1,17 @@
+TOS LCD daemon:
+
+-How to handle reading and writing?
+
+Idea - 
+     Have a main loop that runs forever - checks the LCD for keypresses, handles them if needed (first looks at last keypress, runs a function to perform an action based on it). A time value is maintained for the time when the last keypress was detected. If in menu, doesn't worry about external screen write requests until done. If not in menu, it reads keypresses, then checks the "needsUpdate" flag, then waits a few ms and repeats.
+     When not in a menu, commands are received via a separate thread that listens on a named pipe and processes the commands. Commands are sent in an abbreviated, proprietary format - a command type code and a list of arguments (or text string) separated by commas. The daemon saves the state of the display outputs - not commands. i.e. it has internal data structures for characters on each line of the display, LED state, backlight state, contrast state, etc. that are updated by the incoming commands, and a "needsUpdate" flag is set. 
+     If the menu is not active, updates to the display (if the needsUpdate flag is set) are processed in the next iteration of the loop. If the menu is active, once it is exited out of, or once a given interval has passed from the time of the last detected keypress, the menu is "closed", and the display, LEDs, etc. are restored to the state saved in the internal data structures.
+     LEDs should maintain state throughout menu operations, and should change even if the menu is being used.
+     Having the top LED blink would be a good idea.
+
+     COMMANDS - each command has a handler function. When a command is sent to the LCD, the LCDd will wait for a response packet from the LCD and evaluate it. If the menu is being used, and the response indicates and error, the packet is re-sent twice, and then an error is raised (and, hopefully, printed on the menu). If the menu is not active, the message is retried three times. If it does not succeed, an error is logged, but the program will continue silently, removing the needsUpdate flag and abandoning the update.
+
+     (should needsUpdate flags be set on a per-item basis, i.e. for each LED color, each line, and backlight, contrast, to minimize communications?)
+
+     LCD state, at each update, should also be written to an external file, or have the data structure(s) pickled. This will allow generation of text-based and graphical LCD state images.
+     

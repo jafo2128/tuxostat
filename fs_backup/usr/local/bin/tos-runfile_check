@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+# tos-runfile_check
+# Cleans up any *_run or *_stop files that shouldn't be there
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-07-13 00:29:20 tuxostat"
+#  $Id: tos-runfile_check,v 1.1 2008/07/18 00:34:47 jantman Exp $
+
+# IMPORTS
+from tuxostat.tosRelayControl import tosRelayControl
+from tuxostat.tosLogger import tosLogger
+
+import os, time, sys
+
+class tosRunFileCheck:
+    """
+    This is the master control class for tuxOstat. It handles looking at the schedule, overrides, and OWFS data and deciding whether or not to run heating/cooling.
+    """
+    
+    cool_run_file = "/var/local/tuxostat/cool_run"
+    heat_run_file = "/var/local/tuxostat/heat_run"
+    fan_run_file = "/var/local/tuxostat/fan_run"
+
+    cool_stop_file = "/var/local/tuxostat/cool_stop"
+    heat_stop_file = "/var/local/tuxostat/heat_stop"
+    fan_stop_file = "/var/local/tuxostat/fan_stop"
+    
+    trc = tosRelayControl()
+
+    def checkRelays(self):
+        """
+        Checks the relay status and makes sure the appropriate files exist.
+        """
+        
+        # check fan (relay 0)
+        if self.trc.GetOutputState(0) is True:
+            # make sure the fan_stop_file is gone and the fan_run_file is there
+            if os.path.exists(self.fan_stop_file):
+                os.system("rm "+self.fan_stop_file)
+                self.logger.log(self, 5, "Fan is on. fan_stop_file exists. Removing!.")
+        else:
+            # make sure the fan_stop file is there and the fan_start file is gone
+            if os.path.exists(self.fan_run_file):
+                os.system("rm "+self.fan_run_file)
+                self.logger.log(self, 5, "Fan is off. fan_run_file exists. Removing!.")
+
+        # check AC (relay 1)
+        if self.trc.GetOutputState(1) is True:
+            # make sure the cool_stop_file is gone and the cool_run_file is there
+            if os.path.exists(self.cool_stop_file):
+                os.system("rm "+self.cool_stop_file)
+                self.logger.log(self, 5, "AC is on. fan_stop_file exists. Removing!.")
+        else:
+            # make sure the cool_stop file is there and the cool_start file is gone
+            if os.path.exists(self.cool_run_file):
+                os.system("rm "+self.cool_run_file)
+                self.logger.log(self, 5, "Fan is off. fan_run_file exists. Removing!.")
+
+    def main(self):
+        """
+        Check the relay state, then update the run files as needed.
+        """
+
+        self.logger = tosLogger()
+
+        self.checkRelays()
+
+if __name__ == '__main__':
+    myclass = tosRunFileCheck()
+    myclass.main()

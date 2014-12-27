@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+# tos-owfs-handler
+# tuxOstat OWFS handler
+# this handles all of the OWFS data gathering and storage for tuxOstat
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-06-12 09:31:47 tuxostat"
+#  $Id: tos-owfs-handler,v 1.2 2008/07/18 00:34:16 jantman Exp $
+
+# IMPORTS
+from tuxostat.tosZones import tosZones as tosZones
+import cPickle as pickle
+import _mysql
+from tuxostat.crystalfontz635usb import crystalfontz635usb as CF635
+import time
+from tuxostat.tosLogger import tosLogger
+
+class tosOWFShandler:
+    """
+    This handles grabbing the data from the OWFS filesystem, converting to Farenheit, saving in /var/tuxostat/zones/ files, logging to MySQL, etc.
+    """
+    
+    tempFileDir = "/var/local/tuxostat/zones/" # CONFIG: the directory to store zone data
+    zonesFile = "/etc/tuxostat/zones.pkl" # CONFIG: the zones file
+    zoneTempsF = {}
+    tableName = "env_log"
+    dbName = "tuxostat"
+    logger = None
+
+    def getZoneTemp(self, OWFSid):
+        """
+        Reads the temperature file for the specified zone and returns the temperature in Celcius.
+        """
+        fBase = "/1wire/"
+        fEnd = "/temperature"
+        fName = fBase+OWFSid+fEnd
+        try:
+            f = open(fName)
+        except IOError:
+            print "FATAL: File "+fName+" unable to be opened! Setting zone temp to -1."
+            self.logger.log(self, 2, "FATAL: OWFS file "+fName+" could not be opened!")
+            return -1
+        else:
+            temp = f.read()
+            f.close()
+            
+        return temp.strip()
+
+    def logToMySQL(self, zID, tempC, tempF):
+        """
+        Handles logging the temp data to MySQL.
+        """
+        db=_mysql.connect(db=self.dbName)
+        zName = self.allZones[zID]["Name"]
+        owfsID = self.allZones[zID]["ID"]
+        query = "INSERT INTO "+self.tableName+" SET timestamp="+str(time.time())+",sensorID=\""+owfsID+"\",valC="+str(tempC)+",valF="+str(tempF)+",sensorName=\""+zName+"\";"
+        print "MySQL Query: "+query
+        db.query(query)
+
+    def updateLCD(self, zID, zName, tempF):
+        """
+        Updates the LCD display with the current temps
+        """
+        # TODO: testing only - update the LCD
+
+        lineNum = zID + 1 # offset 1 for the time on the first line. we have 3 zones.
+        
+        if len(str(tempF)) > 5:
+            tempStr = zName+": "+str(tempF)[:5]+chr(self.display.CHAR_DEGREES)
+        else:
+            tempStr = zName+": "+str(tempF)+chr(self.display.CHAR_DEGREES)
+        self.display.writeCenteredLine(lineNum, tempStr)
+
+    def handleZone(self, zID, OWFSid):
+        """
+        Handles dealing with the data for each individual zone.
+        @param zID - the integer ZoneID (position in the zones list)
+        @param OWFSid - the OWFS ID / directory name
+        """
+        temp = self.getZoneTemp(OWFSid)
+        if temp == -1:
+            # unable to read file
+            tempC = float(-1)
+            tempF = float(-1)
+        else:
+            tempC = float(temp)
+            tempF = ( 1.8 * tempC ) + 32.0
+
+        # now tempC holds the temp in Celcius and tempF holds the temp in Fahrenheit
+
+        zName = self.allZones[zID]["Name"]
+
+        # add to zoneTempsF dict
+        self.zoneTempsF[zID] = tempF
+
+        # write out the temp file
+        self.writeZoneFile(zID, tempF)
+
+        # log to MySQL
+        self.logToMySQL(zID, tempC, tempF)
+
+        if zID != 2:
+            self.updateLCD(zID, zName, tempF)
+
+    def writeZoneFile(self, zID, tempF):
+        """
+        Writes the temp (F) to a text file.
+        """
+        fName = self.tempFileDir+"zone_"+str(zID)
+        f = open(fName, 'w')
+        f.write(str(tempF))
+        f.close()
+
+    def writeZoneTemps(self):
+        """
+        Pickle the zoneTempsF file.
+        """
+        fName = self.tempFileDir+"tempsF.pkl"
+        f2 = file(fName, 'w')
+        pickle.dump(self.zoneTempsF, f2, False)
+        f2.close()
+
+    def main(self):
+        ZONES = tosZones() # the zones
+        self.allZones = ZONES.GetZones() # gets the full list of dicts
+        zList = ZONES.GetZoneIDs() # a list of the ZoneIDs to OWFS IDs/dir names
+
+        self.logger = tosLogger()
+
+        self.display = CF635(None, "/dev/ttyUSB0") # init the display
+        time.sleep(0.1)
+        self.display.writeCenteredLine(0, time.strftime("%H:%M:%S"))
+
+        c = 0 # count
+
+        # iterate through the list
+        for OWFSid in zList:
+            self.handleZone(c, OWFSid)
+            c = c + 1
+
+        self.writeZoneTemps()
+
+if __name__ == '__main__':
+    myclass = tosOWFShandler()
+    myclass.main()

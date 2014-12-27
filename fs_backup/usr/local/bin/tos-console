@@ -1,0 +1,957 @@
+#!/usr/bin/env python
+
+# tos-console
+#  TuxOstat administrative console
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-07-08 17:03:51 tuxostat"
+#  $Id: tos-console,v 1.2 2008/07/18 00:34:16 jantman Exp $
+
+
+#
+# IMPORTS
+#
+import os, sys, string, warnings, time, getpass
+
+from tuxostat.tosSched import tosSched
+from tuxostat.tosZones import tosZones
+import cPickle as pickle
+import _mysql
+from tuxostat.crystalfontz635usb import crystalfontz635usb as CF635
+from tuxostat.tosRelayControl import tosRelayControl
+from tuxostat.tosOverrides import tosOverrides
+
+#
+# GLOBAL VARIABLES
+#
+ZONES = None
+OVERRIDES = None
+
+# START BANNER - this is the program banner. it goes on for a while...
+# TODO: put the banner in here rather than using a shell exec
+# END BANNER
+
+#
+# FUNCTION DEFINITIONS
+#
+
+#
+# ENV
+#
+
+def showEnv():
+    """
+    This function shows the current status of the environmental sensors.
+    """
+    global ZONES
+    myZones = ZONES.GetZones()
+    # unpickle the zone data
+    f2 = file("/var/local/tuxostat/zones/tempsF.pkl", 'rb')
+    zoneData = pickle.load(f2)
+    f2.close()
+                                                    
+    print "--------------------------------------------------------------------------------"
+    print "ID) Name\t\tTemp (F)"
+    print "--------------------------------------------------------------------------------"
+    count = 0
+    for i in myZones:
+        name = i["Name"]
+        name = name.ljust(12)
+        print str(count)+") "+name+"\t\t"+str(zoneData[count])
+        count = count + 1
+
+#
+# RELAYS
+#
+def showRelays():
+    """
+    This function shows the current status of the relays.
+    """
+    print "--------------------------------------------------------------------------------"
+    print "ID\tSTATE"
+    print "--------------------------------------------------------------------------------"
+    trc = tosRelayControl()
+    print "0\t"+str(trc.GetOutputState(0))
+    print "1\t"+str(trc.GetOutputState(1))
+    print "2\t"+str(trc.GetOutputState(2))
+    print "3\t"+str(trc.GetOutputState(3))
+    trc.close()
+    print "--------------------------------------------------------------------------------"
+
+#
+# STATUS
+#
+def showStatus():
+    """
+    This function provides an all-in-one view of system status
+    """
+    print "================================================================================"
+    print "=============================tuxOstat SYSTEM STATUS============================="
+    print "================================================================================"
+    print ""
+    # relays state
+    # ENV TEMPS and RELAYS
+    # relays
+    trc = tosRelayControl()
+    if trc.GetOutputState(0) is True:
+        state0 = "ON"
+    else:
+        state0 = "OFF"
+    if trc.GetOutputState(1) is True:
+        state1 = "ON"
+    else:
+        state1 = "OFF"
+    if trc.GetOutputState(2) is True:
+        state2 = "ON"
+    else:
+        state2 = "OFF"
+    trc.close()
+
+    global ZONES
+    myZones = ZONES.GetZones()
+    # unpickle the zone data
+    f2 = file("/var/local/tuxostat/zones/tempsF.pkl", 'rb')
+    zoneData = pickle.load(f2)
+    f2.close()
+    tempData = {}
+    count = 0
+    for i in myZones:
+        tempData[count] = {"Name": i["Name"], "Temp": zoneData[count]}
+        count = count + 1
+
+    print "---------ENV TEMPS---------\t---SYSTEM OUTPUTS (RELAYS)---"
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[0]["Name"], tempData[0]["Temp"], "Fan", state0)
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[1]["Name"], tempData[1]["Temp"], "Cool", state1)
+    print ' %10s\t%8f\t\t%4s\t%3s' % (tempData[2]["Name"], tempData[2]["Temp"], "Heat", state2)
+    print ""
+
+    print "----------------------------------STATE FILES-----------------------------------"
+
+    if os.path.exists("/var/local/tuxostat/cool_stop"):
+        midnight = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        mtime = os.path.getmtime("/var/local/tuxostat/cool_stop")
+        if mtime > midnight:
+            print " LAST SYSTEM STOP: "+time.strftime("%H:%M:%S", time.localtime(mtime))+" today"
+        else:
+            print " LAST SYSTEM STOP: "+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+    elif os.path.exists("/var/local/tuxostat/cool_run"):
+        midnight = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+        mtime = os.path.getmtime("/var/local/tuxostat/cool_run")
+        if mtime > midnight:
+            print " SYSTEM RUNNING SINCE: "+time.strftime("%H:%M:%S", time.localtime(mtime))+" today"
+        else:
+            print " SYSTEM RUNNING SINCE: "+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+
+    print ""
+    print "------------------------------------DATABASE------------------------------------"
+
+    # count runs is last 24h
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT COUNT(PKey) FROM runlog WHERE timestamp >= "+str((int(time.time()) - 86400))+" AND type=1 AND system=\"ac\";"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    acRunCount = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT COUNT(PKey) FROM runlog WHERE timestamp >= "+str((int(time.time()) - 86400))+" AND type=1 AND system=\"fan\";"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    fanRunCount = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT type FROM runlog WHERE system=\"fan\" ORDER BY PKey DESC LIMIT 1;"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    fanDBstate = myrow[0][0]
+    db.close()
+
+    db=_mysql.connect(db="tuxostat")
+    query = "SELECT type FROM runlog WHERE system=\"ac\" ORDER BY PKey DESC LIMIT 1;"
+    db.query(query)
+    r=db.use_result()
+    myrow = r.fetch_row()
+    acDBstate = myrow[0][0]
+    db.close()
+    print " RUNS IN LAST 24H:\t\tFan: "+str(fanRunCount)+"\tAC: "+str(acRunCount)
+    if fanDBstate == "0":
+        fanState = "off"
+    else:
+        fanState = "ON"
+    if acDBstate == "0":
+        acState = "off"
+    else:
+        acState = "ON"
+    print " Current state (as per DB): \tFan: "+fanState+"\tAC: "+acState
+    
+    # MANUAL OVERRIDE
+    global OVERRIDES
+    global SCHEDULE
+    myManOverride = OVERRIDES.GetManualOverride()
+
+    if myManOverride is not False and myManOverride is not None:
+        # we have a manual override
+        print ""
+        print "--------------------------------MANUAL OVERRIDE---------------------------------"
+        start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["StartTS"]))
+        end = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["EndTS"]))
+        created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["createdTS"]))
+        print "MANUAL OVERRIDE"
+        print "starting at "+start+" and ending at "+end
+        print "Temp set to: "+str(myManOverride["Temp"])+"F\tHVACmode: "+SCHEDULE.HVACmodes[myManOverride["HVACmode"]]
+        print "Created at "+created+" by "+myManOverride["createdBy"]
+        print "  Note:"+myManOverride["note"]
+
+    # SCHEDULE
+    print ""
+    print "--------------------------------CURRENT SCHEDULE--------------------------------"
+    taskID = SCHEDULE.GetCurrentTaskID()
+    task = SCHEDULE.GetTaskByID(taskID)
+    if taskID == (SCHEDULE.GetScheduleNumTasks() - 1):
+        nextTaskID = 0
+    else:
+        nextTaskID = taskID + 1
+    nextTask = SCHEDULE.GetTaskByID(nextTaskID)
+
+    if nextTaskID == (SCHEDULE.GetScheduleNumTasks() - 1):
+        nextNextTaskID = 0
+    else:
+        nextNextTaskID = nextTaskID + 1
+    nextNextTask = SCHEDULE.GetTaskByID(nextNextTaskID)
+    
+    print "CURRENT TASK:"
+    print " "+task["Name"]+" ("+str(taskID)+" )\tDay: "+SCHEDULE.days[task["Day"]]+"\tStart: "+task["Time"]+"\tEnd: "+nextTask["Time"]
+    print " Temp: "+str(task["Temp"])+"\t TempMode: "+SCHEDULE.tempModes[task["TempMode"]]+"\t\tZone: "+task["Zone"]+"\t\tZone Mode: "+SCHEDULE.zoneModes[task["ZoneMode"]]
+    print " HVAC Mode: "+SCHEDULE.HVACmodes[task["HVACmode"]]
+
+    print "NEXT TASK:"
+    print " "+nextTask["Name"]+" ("+str(nextTaskID)+" )\tDay: "+SCHEDULE.days[nextTask["Day"]]+"\tStart: "+nextTask["Time"]+"\tEnd: "+nextNextTask["Time"]
+    print " Temp: "+str(nextTask["Temp"])+"\t TempMode: "+SCHEDULE.tempModes[nextTask["TempMode"]]+"\t\tZone: "+nextTask["Zone"]+"\t\tZone Mode: "+SCHEDULE.zoneModes[nextTask["ZoneMode"]]
+    print " HVAC Mode: "+SCHEDULE.HVACmodes[nextTask["HVACmode"]]
+    
+    # taskID
+    # set temp
+    # TM/ZM/ZONE
+    # next task time, temp
+    # TODO: Manual Overrides?
+    # TODO: Sched Overrides?
+    print "================================================================================"
+
+#
+# SCHED
+#
+
+def showSched():
+    """
+    This function shows the current schedule values. It should be formatted for a 80x24 terminal screen.
+    """
+    global SCHEDULE
+
+    mySched = SCHEDULE.GetSchedule()
+    print "--------------------------------------------------------------------------------"
+    print "ID   Day   Time   Z   ZM     Temp   TM     HVACm   Name"
+    print "--------------------------------------------------------------------------------"
+
+    # print each line in the schedule
+    count = 0
+    for i in mySched:
+        # format Zone if none
+        if i['Zone'] is None:
+            i['Zone'] = "-"
+        # formatted count string
+        cs = str(count)
+        if len(cs) == 1:
+            cs = cs+" "
+        # the full listing
+        s = cs+"   "+SCHEDULE.days[i['Day']]+"    "+i['Time']+"  "+str(i['Zone'])+"   "+SCHEDULE.zoneModes[i['ZoneMode']]+"   "+str(i['Temp'])+"     "+SCHEDULE.tempModes[i['TempMode']]+"   "+SCHEDULE.HVACmodes[i['HVACmode']]+"    "+i['Name']
+        print s
+        count = count + 1
+
+def getTaskSummary(taskID):
+    """
+    Returns a formatted string, a detailed summary of the specified taskID.
+    """
+    global SCHEDULE
+
+    mySched = SCHEDULE.GetSchedule()
+    if len(mySched) < (taskID - 1):
+        return None
+
+    myTask = mySched[taskID]
+
+    s = "Name: "+myTask['Name']+"\n"
+    s = s+"Day: "+SCHEDULE.days[myTask['Day']]+"\t"+"Start Time: "+myTask['Time']+"\n"
+    s = s+"Zone: "+"---"+"\t"+"Zone Mode: "+SCHEDULE.zoneModes[myTask['ZoneMode']]+"\n" # TODO: get zone name
+    s = s+"Temp: "+str(myTask['Temp'])+"\t"+"Temp Mode: "+SCHEDULE.tempModes[myTask['TempMode']]+"\n"
+    s = s+"HVAC Mode: "+SCHEDULE.HVACmodes[myTask['HVACmode']]
+    return s
+
+
+def addTaskBefore():
+    """
+    Adds a task to the schedule before beforeID.
+    """
+    resp = raw_input("Task ID to add new task before: ")
+    print "adding task before "+resp # DEBUG
+
+def addTaskAtEnd():
+    """
+    Adds a new task at the end of the current schedule.
+    """
+    print "add at end"
+    global SCHEDULE
+
+    myTask = {}
+
+    name = raw_input("Enter new task name: ")
+    myTask['Name'] = name
+    day = raw_input("Enter new day, Monday=0 through Sunday=6: ")
+    myTask['Day'] = int(day)
+    time = raw_input("Enter START time in 24-hour HH:MM format: ")
+    # validate the time
+    hr = int(time[:time.find(":")])
+    min = int(time[time.find(":")+1:])
+    if hr < 0 or hr > 23:
+        print "INVALID TIME."
+    elif min < 0 or min > 59:
+        print "INVALID TIME."
+    else:
+        # update the dictionary
+        myTask['Time'] = time
+    # TODO: no zone
+    myTask['Zone'] = None
+
+    print "ZoneModes: "
+    count = 0
+    for i in SCHEDULE.zoneModes:
+        print str(count)+") "+SCHEDULE.zoneModes[i]
+        count = count + 1
+    zm = int(raw_input("New Zone Mode: "))
+    if zm < 0 or zm > count:
+        print "INVALID selection."
+    myTask['ZoneMode'] = zm
+    temp = int(raw_input("Enter new temperature: "))
+    myTask['Temp'] = temp
+    print "TempModes: "
+    count = 0
+    for i in SCHEDULE.tempModes:
+        print str(count)+") "+SCHEDULE.tempModes[i]
+        count = count + 1
+    tm = int(raw_input("New Temp Mode: "))
+    if tm < 0 or tm > count:
+        print "INVALID selection."
+    myTask['TempMode'] = tm
+    print "HVAC Modes: "
+    count = 0
+    for i in SCHEDULE.HVACmodes:
+        print str(count)+") "+SCHEDULE.HVACmodes[i]
+        count = count + 1
+    hm = int(raw_input("New HVAC Mode: "))
+    if hm < 0 or hm > count:
+        print "INVALID selection."
+    myTask['HVACmode'] = hm
+
+    resp = raw_input("Add to schedule? [y/n] ")
+    if resp == "y":
+        SCHEDULE.AddTaskAtEnd(myTask)
+    print "Added. You must still WRITE SCHED to commit changes."
+
+def reloadSched():
+    """
+    Reloads the schedule from the file on disk.
+    """
+    global SCHEDULE
+    resp = raw_input("This will re-load the schedule from disk, losing all changes. Continue? [y/N] ")
+    if resp != "y":
+    	return -1
+    SCHEDULE.LoadSchedule()
+    return 1
+
+def writeSched():
+    """
+    Writes the current schedule to disk.
+    """
+    resp = raw_input("Are you sure you want to write the changes? [y/N] ")
+    if resp != "y":
+	return -1
+    global SCHEDULE
+    name = SCHEDULE.WriteSchedule()
+    print "Old schedule saved at: "+name
+
+def removeTask():
+    """
+    Removes a specified task.
+    """
+    global SCHEDULE
+    resp = raw_input("Task ID to remove: ")
+    if int(resp) >= SCHEDULE.GetScheduleNumTasks() or int(resp) < 0:
+	print "Invalid task ID."
+	return -1
+
+    print "TASK SUMMARY:"
+    print getTaskSummary(int(resp))
+    resp2 = raw_input( "Are you SURE you want to remove this task? [y/N] ")
+    if resp2 != "y" and resp2 != "Y":
+	print "Canceling. No changes made."
+	return -1
+
+    SCHEDULE.RemoveScheduleTask(int(resp))
+    print "Task "+resp+" removed."
+    print "Use SHOW SCHED to preview changes, WRITE SCHED to write changes, or RELOAD SCHED to cancel."
+
+def editTask():
+    """
+    Edits a specified task.
+    """
+    resp = raw_input("Task ID to edit: ")
+    taskID = int(resp)
+
+    mySched = SCHEDULE.GetSchedule()
+    # make sure we're a valid id
+    if taskID < 0 or taskID >= len(mySched):
+        print "INVALID TASK ID."
+        return None
+    myTask = mySched[taskID]
+
+    print "SUMMARY OF TASK ID "+resp+":"
+    print getTaskSummary(taskID)
+
+    myOption = 2
+
+    while myOption > 1:
+	  print "============Options================= "
+	  print "0) CANCEL\t1) Finish\t2) Preview"
+	  print " CHANGE: "
+	  print "3) Name"
+	  print "4) Day\t\t5) Time"
+	  print "6) Zone\t\t7) ZoneMode"
+	  print "8) Temp\t\t9) TempMode"
+	  print "10) HVAC Mode"
+	  print "===================================="
+	  myOption = int(raw_input("Selection: "))
+
+	  if myOption == 0:
+	     print "Canceling."
+	     return -1
+	  elif myOption == 1:
+	     print "Accepting changes. You still need to WRITE SCHED."
+	     SCHEDULE.ReplaceTask(taskID, myTask)
+	  elif myOption == 2:
+	     print "===PREVIEW==="
+	     s = "Name: "+myTask['Name']+"\n"
+	     s = s+"Day: "+str(myTask['Day'])+" ("+SCHEDULE.days[myTask['Day']]+")\t"+"Start Time: "+myTask['Time']+"\n"
+	     s = s+"Zone: "+"---"+"\t"+"Zone Mode: "+SCHEDULE.zoneModes[myTask['ZoneMode']]+"\n" # TODO: get zone name
+	     s = s+"Temp: "+str(myTask['Temp'])+"\t"+"Temp Mode: "+SCHEDULE.tempModes[myTask['TempMode']]+"\n"
+	     s = s+"HVAC Mode: "+SCHEDULE.HVACmodes[myTask['HVACmode']]	     
+	     print s
+	     print "========================"
+	  elif myOption == 3:
+	     print "Current Name: "+myTask['Name']
+	     name = raw_input("Enter new task name: ")
+	     myTask['Name'] = name
+	  elif myOption == 4:
+	     print "Current Day: "+str(myTask['Day'])+" ("+SCHEDULE.days[myTask['Day']]+")"
+	     day = raw_input("Enter new day, Monday=0 through Sunday=6: ")
+	     myTask['Day'] = int(day)
+	  elif myOption == 5:
+	     print "Current Time: "+myTask['Time']
+	     time = raw_input("Enter new time in 24-hour HH:MM format: ")
+
+	     # validate the time
+	     hr = int(time[:time.find(":")])
+	     min = int(time[time.find(":")+1:])
+	     if hr < 0 or hr > 23:
+		print "INVALID TIME."
+	     elif min < 0 or min > 59:
+		print "INVALID TIME."
+	     else:
+		# update the dictionary
+		myTask['Time'] = time
+	  elif myOption == 6:
+	     # TODO: need to update this when I add zones
+	     if myTask['Zone'] is None:
+		print "Current Zone: None"
+	     else:
+		print "Current Zone: "+str(myTask['Zone'])
+	  elif myOption == 7:
+	     print "Current ZoneMode: "+str(myTask['ZoneMode'])
+	     print "ZoneModes: "
+	     count = 0
+	     for i in SCHEDULE.zoneModes:
+		 print str(count)+") "+SCHEDULE.zoneModes[i]
+		 count = count + 1
+	     zm = int(raw_input("New Zone Mode: "))
+	     if zm < 0 or zm > count:
+		print "INVALID selection."
+		break
+	     myTask['ZoneMode'] = zm
+	  elif myOption == 8:
+	     print "Current Temp: "+str(myTask['Temp'])
+	     temp = int(raw_input("Enter new temperature: "))
+	     myTask['Temp'] = temp
+	  elif myOption == 9:
+	     print "Current TempMode: "+str(myTask['TempMode'])
+	     print "TempModes: "
+	     count = 0
+	     for i in SCHEDULE.tempModes:
+		 print str(count)+") "+SCHEDULE.tempModes[i]
+		 count = count + 1
+	     tm = int(raw_input("New Temp Mode: "))
+	     if tm < 0 or tm > count:
+		print "INVALID selection."
+		break
+	     myTask['TempMode'] = tm
+	  elif myOption == 10:
+	     print "Current HVAC Mode: "+str(myTask['HVACmode'])
+	     print "HVAC Modes: "
+	     count = 0
+	     for i in SCHEDULE.HVACmodes:
+		 print str(count)+") "+SCHEDULE.HVACmodes[i]
+		 count = count + 1
+	     hm = int(raw_input("New HVAC Mode: "))
+	     if hm < 0 or hm > count:
+		print "INVALID selection."
+		break
+	     myTask['HVACmode'] = hm
+
+
+def editSched():
+    """
+    This function handles editing the schedule.
+    """
+
+    print "1) Add task before given ID."
+    print "2) Add task at end."
+    print "3) Remove task."
+    print "4) Edit task."
+    print "5) Cancel."
+
+    resp = raw_input("Selection: ")
+
+    if resp == "1":
+        addTaskBefore()
+    elif resp == "2":
+        addTaskAtEnd()
+    elif resp == "3":
+        removeTask()
+    elif resp == "4":
+        editTask()
+    elif resp == "5":
+        # cancel
+        print "Canceled."
+        return 1
+    else:
+        print "Invalid Selection. Canceled."
+        return 1
+
+#
+# CONFIG
+#
+
+def editConfig():
+    """
+    Edits the current system configuration.
+    """
+    # TODO: implement this
+    print "call editConfig()"
+
+def showConfig():
+    """
+    Shows the current system configuration.
+    """
+    # TODO: implement this
+    print "call showConfig()"
+
+#
+# OVERRIDES
+#
+
+def showManOverride():
+    """
+    Shows any existing immediate manual override.
+    """
+    global OVERRIDES
+    global SCHEDULE
+    myManOverride = OVERRIDES.GetManualOverride()
+    print "================================================================================"
+    print "================================MANUAL OVERRIDE================================="
+    print "================================================================================"
+    if myManOverride is not False and myManOverride is not None:
+        # we have a manual override
+        start = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["StartTS"]))
+        end = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["EndTS"]))
+        created = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(myManOverride["createdTS"]))
+        print "MANUAL OVERRIDE starting at "+start+" and ending at "+end
+        print "Temp set to: "+str(myManOverride["Temp"])+"F\tHVACmode: "+SCHEDULE.HVACmodes[myManOverride["HVACmode"]]
+        print "Created at "+created+" by "+myManOverride["createdBy"]
+        print "  Note:"+myManOverride["note"]
+        
+    else:
+        print "No Manual Overrides."
+    print "================================================================================"
+
+def editManOverride():
+    """
+    Creates or removes a manual override.
+    """
+    global OVERRIDES
+    global SCHEDULE
+    # handle removal
+    resp = raw_input("Enter 1 to add/edit current override, 2 to remove it.")
+    if resp == "2":
+        resp = raw_input("Are you sure you want to remove the manual override? [y/N] ")
+        if resp == "y":
+            OVERRIDES.RemoveManOverride()
+            print "Manual override removed. You still need to WRITE MAN OVERRIDE to commit to disk."
+            return 0
+        else:
+            return 0
+
+    mySched = SCHEDULE.GetTaskByID(SCHEDULE.GetCurrentTaskID())
+    currentTemp = mySched["Temp"]
+    currentTime = time.time()
+    
+    print "Create Manual Override:"
+    resp = raw_input("Enter ending time in format Y-m-d H:M : ")
+    endTime = time.mktime(time.strptime(resp, "%Y-%m-%d %H:%M"))
+    print "Ending at: "+time.strftime("%Y-%m-%d %H:%M", time.localtime(endTime))
+    print "Current Temp: "+str(currentTemp)+"F"
+    resp = raw_input("Enter new temp (int): ")
+    temp = int(resp)
+    print "HVAC MODES:"
+    count = 0
+    for i in SCHEDULE.HVACmodes:
+        print str(count)+") "+SCHEDULE.HVACmodes[i]
+        count = count + 1
+    HVACm = int(raw_input("New HVAC Mode: "))
+    if HVACm < 0 or HVACm > count:
+        print "INVALID selection."
+        return 1
+    creator = getpass.getuser()
+    note = raw_input("Enter Note: ")
+    OVERRIDES.SetManOverride(None, currentTime, endTime, temp, HVACm, creator, note)
+    print "Done. You still need to issue the WRITE MAN OVERRIDE command to commit it to disk."
+
+def reloadManOverride():
+    """
+    Reloads the overrides.
+    """
+    global OVERRIDES
+    OVERRIDES.LoadOverrides()
+    print "Reloaded all manual and sched overrides."
+
+def writeManOverride():
+    """
+    Writes out the manual override.
+    """
+    global OVERRIDES
+    OVERRIDES.WriteManualOverride(None)
+    print "write man override"
+
+def showSchedOverride():
+    """
+    Show schedule overrides.
+    """
+    # TODO: implement this.
+    print "show sched override"
+
+def editSchedOverride():
+    """
+    Add, remove, or edit a schedule override.
+    """
+    # TODO: implement this
+    print "edit sched override"
+
+def writeSchedOverride():
+    """
+    Writes out the schedule override.
+    """
+    global OVERRIDES
+    OVERRIDES.WriteScheduleOverrides()
+    print "write sched override"
+
+#
+# RESTART
+#
+
+def restart():
+    """
+    This function will restart the system.
+    """
+    clear()
+    print "\n\n\n\n\n\n"
+    print "WARNING: you have selected to RESTART the system."
+    print "To restart, type PLEASE RESTART. TO cancel, type anything else."
+    resp = raw_input("Are you sure? I mean really, really, really sure? ")
+    if resp == "PLEASE RESTART":
+        print "TODO: RESTART SYSTEM."
+        # TODO: will this still work if we exit here?
+        #TODO: implement this
+        # RESTART HERE
+        sys.exit()
+    else:
+        clear()
+        return 0
+
+#
+# ZONES
+#
+
+def showZones():
+    """
+    This shows the current zone IDs, names, and ID strings (1-wire IDs)
+    """
+    #            |             20      | 16
+    print "  (entries surrounded by parentheses are disabled)"
+    print "ZoneID       Name               OWFS ID"
+    print "--------------------------------------------------------------------------------"
+    global ZONES
+    if ZONES is None:
+        ZONES = tosZones()
+    myZones = ZONES.GetZones()
+    i = 0 # count of records for ID
+    for z in myZones:
+        if(z["Enabled"] == False):
+            s = "("+string.ljust(str(i), 6)+string.center(z["Name"], 20)+string.center(z["ID"], 19)+")"
+        else:
+            s = string.ljust(str(i), 6)+string.center(z["Name"], 20)+string.center(z["ID"], 19)
+        print s
+        i = i + 1 # maintain count for ID
+
+def addZone():
+    """
+    Adds a new zone at the end of the current list.
+    """
+    global ZONES
+    zName = raw_input("Name: ")
+    zID = raw_input("OWFS ID: ")
+    temp = {"Name": zName, "ID": zID, "Enabled": True}
+    ZONES.AddZoneAtEnd(temp)
+
+def disableZone():
+    """
+    Disables a zone.
+    """
+    id = raw_input("ZoneID: ")
+    global ZONES
+    if id < 0 or id >= len(zones):
+        print "Invalid ZoneID."
+        return -1
+    ZONES.RemoveZone(id)
+
+def editZones():
+    """
+    This provides an interface for editing zones.
+    """
+    print "1) Add zone at end."
+    print "2) Disable Zone."
+    print "3) Edit zone."
+    print "4) Cancel."
+
+    resp = raw_input("Selection: ")
+
+    if resp == "1":
+        addZone()
+    elif resp == "2":
+        disableZone()
+    elif resp == "3":
+        editZone()
+    elif resp == "4":
+        # cancel
+        print "Canceled."
+        return 1
+    else:
+        print "Invalid Selection. Canceled."
+        return 1
+
+def reloadZones():
+    """
+    Re-reads the zones file, remvoing any changes.
+    """
+    resp = raw_input("This will lose any changes you have made. Are you sure? [yes/NO]")
+    if resp != "yes":
+        return -1
+    global ZONES
+    ZONES.LoadZones()
+
+def writeZones():
+    """
+    Write out zone changes
+    """
+    resp = raw_input("This will commit your changes to disk. Are you sure? [yes/NO]")
+    if resp != "yes":
+        return -1
+    global ZONES
+    name = ZONES.WriteZones()
+    print "Old zones file saved at /etc/tuxostat/"+name
+
+#
+# MAIN INTERFACE
+#
+
+def showHelp():
+    """
+    This function prints names and descriptions of all available commands.
+    """
+
+    print ""
+    print "HELP - show this help"
+    print "HELP DISPLAY - show help about the physical display"
+    print "EXIT - exit/logout"
+    print ""
+    print "<type> can be any one of {ZONES | SCHED | SCHED OVERRIDE | MAN OVERRIDE}:"
+    print "SHOW <type> - show the current data"
+    print "EDIT <type> - edit the current data"
+    print "RELOAD <type> - clear changes, re-read data from disk"
+    print "WRITE <type> - write current changes to disk"
+    print ""
+    print "SHOW CONFIG - show current system config"
+    print "EDIT CONFIG - edit the configuration"
+    print ""
+    print "SHOW ENV - show current environmental sensor data"
+    print "SHOW RELAYS - show current relay (output) state"
+    print "SHOW STATUS - all-in-one display of system status"
+    print ""
+    print "RESTART - restart the system"
+    print "CLEAR - clear the screen"
+    print ""
+    print "DATE - show the current system date"
+    print ""
+
+def helpDisplay():
+    """
+    This function shows help about the physical display.
+    """
+    # TODO: implement
+    os.system("cat /etc/tuxostat/display.txt") # TODO: fix character encoding and store locally
+
+def clear():
+    """
+    Just makes an os.system call to 'clear'.
+    """
+    os.system("clear")
+
+def showBanner():
+    """
+    Prints the program banner.
+    """
+    clear()
+    os.system("cat /etc/tuxostat/banner.txt") # TODO: fix character encoding and store locally
+    print "For help, enter HELP at the prompt."
+    print " "
+
+def mainLoop():
+    # get rid of the Phidgets warnings
+    warnings.simplefilter("ignore", Warning)
+
+    resp = raw_input(getpass.getuser()+" : "+"tuxOstat-console # ")
+    resp = resp.upper()
+    if resp == "HELP":
+        showHelp()
+        return 1
+    elif resp == "HELP DISPLAY":
+        helpDisplay()
+        return 1
+    elif resp == "EXIT":
+        sys.exit(0)
+    elif resp == "RESTART":
+        restart()
+        return 3
+    elif resp == "CLEAR":
+	clear()
+	return 1
+    # CONFIG
+    elif resp == "SHOW CONFIG":
+        showConfig()
+        return 1
+    elif resp == "EDIT CONFIG":
+        editConfig()
+        return 1
+    # ENV
+    elif resp == "SHOW ENV":
+        showEnv()
+        return 1
+    # RELAYS
+    elif resp == "SHOW RELAYS":
+        showRelays()
+        return 1
+    # STATUS
+    elif resp == "SHOW STATUS":
+        showStatus()
+        return 1
+    # ZONES
+    elif resp == "SHOW ZONES":
+        showZones()
+        return 1
+    elif resp == "EDIT ZONES":
+        editZones()
+        return 1
+    elif resp == "RELOAD ZONES":
+        reloadZones()
+        return 1
+    elif resp == "WRITE ZONES":
+        writeZones()
+        return 1
+    # SCHED
+    elif resp == "SHOW SCHED":
+        showSched()
+        return 1
+    elif resp == "EDIT SCHED":
+        editSched()
+        return 1
+    elif resp == "RELOAD SCHED":
+	reloadSched()
+	return 1
+    elif resp == "WRITE SCHED":
+	writeSched()
+	return 1
+    # OVERRIDES starting 496
+    elif resp == "SHOW SCHED OVERRIDE":
+        showSchedOverride()
+        return 1
+    elif resp == "SHOW MAN OVERRIDE":
+        showManOverride()
+        return 1
+    elif resp == "RELOAD MAN OVERRIDE":
+        reloadManOverride()
+        return 1
+    elif resp == "RELOAD MAN OVERRIDE":
+        # TODO: implement a separate function for this
+        reloadManOverride()
+        return 1
+    elif resp == "EDIT MAN OVERRIDE":
+        editManOverride()
+        return 1
+    elif resp == "EDIT SCHED OVERRIDE":
+        editSchedOverride()
+        return 1
+    elif resp == "WRITE MAN OVERRIDE":
+        writeManOverride()
+        return 1
+    elif resp == "WRITE SCHED OVERRIDE":
+        writeSchedOverride()
+        return 1
+    elif resp == "DATE":
+        print "Current System Time: "+time.strftime("%Y-%m-%d %H:%M:%S")
+        return 1
+    else:
+        print "Invalid command."
+        return -1
+#
+# BEGIN MAIN PROGRAM LOOP
+#
+
+
+SCHEDULE = tosSched() # instantiate the schedule object
+ZONES = tosZones()
+OVERRIDES = tosOverrides()
+
+showBanner()
+mainResult = -1
+while mainResult != 0:
+    mainResult = mainLoop()

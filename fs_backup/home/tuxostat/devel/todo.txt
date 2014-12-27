@@ -1,0 +1,20 @@
+TODO:
+
+----------------------------------------------------------
+Implement manual overrides in their own class and tos-console
+Implement schedule overrides in their own class and tos-console
+Start /usr/local/bin/tos-control
+Start /usr/local/lib/python2.5/site-packages/tosRelayControl.py
+
+Finish /usr/local/lib/python2.5/site-packages/Phidgets004.py (in ~/devel/)
+
+----------------------------------------------------------
+MAINTENANCE:
+
+Change file and class names of tuxOstat-config to coincide with everything else, update all references
+
+Get all file, class, variable, and method names to be consistent.
+
+Bring everything into CVS
+
+Close all file handlers

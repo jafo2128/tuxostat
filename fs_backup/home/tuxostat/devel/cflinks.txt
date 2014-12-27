@@ -1,0 +1,11 @@
+http://www.crystalfontz.com/forum/showthread.php?t=4229&highlight=backlight
+
+http://www.crystalfontz.com/forum/showthread.php?t=5527&highlight=backlight
+
+Async:
+http://pyserial.sourceforge.net/
+
+http://pyserial.cvs.sourceforge.net/pyserial/pyserial/examples/
+
+IPC:
+

@@ -1,0 +1,53 @@
+tuxostat Menu Map
+Time-stamp: "2008-08-24 19:51:32 jantman"
+
+Home Format:
+ -
+| time
+| JA-BR temp
+| LR temp
+| status / schedule
+ -
+
+MENU MAP:
+
+Home
+
+Status
+  Temps
+  Relays
+  System
+Manual
+  Show
+  Set
+  Clear
+Schedule
+  Current
+  Next
+  Show All
+
+Help
+  LEDs
+  Keys
+  About
+Exit
+
+LEDs never change with menu actions (bound to relay state)
+
+DISPLAY:
+ -
+| MENU NAME       <--- (reverse colors)
+| (Up Arr) Menu Title
+|  Menu Title
+| (Dn Arr) Menu Title
+ -
+
+Keys:
+Up Arr: menu/value up
+Left Arr: prev field
+Right Arr: next field
+Dn Arr: menu/value down
+Check: Select/Save/Show Menu
+X: Back/Exit/Clear/Exit Menu (at top level)
+
+When not in menu, any key except Check just triggers backlight

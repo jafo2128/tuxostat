@@ -1,0 +1,415 @@
+#!/usr/bin/env python
+# tos-control
+# Master control script for tuxOstat
+#  reads the temp files, the schedule, looks for overrides, decides what to do, and does it
+# TuxOstat - Linux-based thermostat <http://www.jasonantman.com>
+# Copyright 2008 Jason Antman. <jason@jasonantman.com>.
+# Licensed under Version 3 or later of the GNU GPL.
+#  Time-stamp: "2008-06-19 19:14:15 tuxostat"
+#  $Id: tos-control,v 1.2 2008/07/18 00:34:16 jantman Exp $
+
+# IMPORTS
+import cPickle as pickle
+
+from tuxostat.tosSched import tosSched
+from tuxostat.tosRelayControl import tosRelayControl
+from tuxostat.tosZones import tosZones as tosZones
+from tuxostat.tosLogger import tosLogger
+from tuxostat.crystalfontz635usb import crystalfontz635usb as CF635
+from tuxostat.tosOverrides import tosOverrides
+
+import os, time, sys
+
+class tosControl:
+    """
+    This is the master control class for tuxOstat. It handles looking at the schedule, overrides, and OWFS data and deciding whether or not to run heating/cooling.
+    """
+    
+    tempsFile = "/var/local/tuxostat/zones/tempsF.pkl" # CONFIG: the directory to store zone data
+    cool_run_file = "/var/local/tuxostat/cool_run"
+    heat_run_file = "/var/local/tuxostat/heat_run"
+    fan_run_file = "/var/local/tuxostat/fan_run"
+
+    cool_stop_file = "/var/local/tuxostat/cool_stop"
+    heat_stop_file = "/var/local/tuxostat/heat_stop"
+    fan_stop_file = "/var/local/tuxostat/fan_stop"
+    
+    logger = None
+    TASK = None # current task
+    taskID = -1 # current taskID
+    TEMPS = None # temp zones list - current temps
+    SCHED = None
+    OVERRIDES = tosOverrides()
+
+    TEMP_OFFSET = 0.75 # added to every calculated temp to make system kick in earlier
+
+    trc = tosRelayControl()
+
+    RELAY_STATE = ""
+
+    LOG_ENTRY = ""
+    madeChanges = False
+
+    runType = "" # schedule, schedule override, or manual override
+
+    DEBUG = False # set debugging output on or off
+
+    def checkManOverrides(self):
+        """
+        Handler for manual overrides. Checks everything and returns True if a manual override is enabled, and temp dictates that we should run now. False otherwise.
+
+        RETURNS:
+        1 if we should run
+        0 if there's no override
+        -1 if we shouldn't run
+        """
+        nowtime = time.time()
+        manOver = self.OVERRIDES.GetManualOverride()
+        if manOver is False:
+            if self.DEBUG:
+                print "checkManOverrides() has none."
+            return 0
+
+        if manOver["EndTS"] <= nowtime:
+            self.OVERRIDES.RemoveManOverride()
+            self.OVERRIDES.WriteManualOverride(None)
+            if self.DEBUG:
+                print "checkManOverrides() removed expired override."
+            return 0
+
+        if manOver["HVACmode"] == 4:
+            # HVAC Mode OFF
+            return -1
+
+        # TODO: implement temp modes?
+
+        # temp mode isn't off, we have an override, check the temp
+        calcTemp = self.CalculateTemp(0, 0, 1)
+        if calcTemp >= manOver["Temp"]:
+            if self.DEBUG:
+                print "checkManOverrides() calls for run - temp is "+str(calcTemp)+" and override is set to "+str(manOver["Temp"])
+            return 1
+        return -1
+
+    def checkSchedOverrides(self):
+        """
+        Handler for schedule overrides. Checks everything and returns True if a schedule override is enabled, and temp dictates that we should run now. False otherwise.
+
+        RETURNS:
+        1 if we should run
+        0 if there's no override
+        -1 if we shouldn't run
+        """
+        # TODO: implement this
+        return False
+
+    def CalculateTemp(self, ZoneMode, Zone, TempMode):
+        """
+        Calculates what our apparent temperature is, taking into account the Zones, ZoneMode, and TempMode.
+        """
+        # TODO: this is a jack ot just look at temps from zones 1 & 2
+        # TODO: still need to implement zones, zonemodes, tempmodes
+        temp = -1
+        if ZoneMode == 0:
+            # Mean
+            temp = (self.TEMPS[0]+self.TEMPS[1])/2.0
+            # loaded temp - add TEMP_OFFET to temp
+            temp = temp + self.TEMP_OFFSET
+        if self.DEBUG:
+            print "CalculateTemp returned temp of "+str(temp)+"F"
+        return temp
+
+    def checkSchedule(self):
+        """
+        Check what the schedule says to do, look at temps, return True if we should be running, false otherwise.
+
+        TODO: Right now, setup for cooling only.
+        """
+        # TODO: how to handle temp modes?
+
+        mySched = tosSched()
+        self.taskID = mySched.GetCurrentTaskID()
+        self.TASK = mySched.GetTaskByID(self.taskID)
+
+        if self.DEBUG:
+            print "Running checkSchedule, found TaskID of "+str(self.taskID)+"..."
+
+        logstr = "Running task "+str(self.taskID)+". HVAC Mode is "+str(self.TASK["HVACmode"])+". "
+
+        if self.DEBUG:
+            print "SET LOGSTR to "+logstr
+
+        shouldRun = False
+        
+        if self.TASK["HVACmode"] == 0:
+            if self.DEBUG:
+                print "checkSchedule found HVACmode of 0."
+            return False
+        elif self.TASK["HVACmode"] == 1:
+            # COOLING mode
+            temp = self.CalculateTemp(self.TASK["ZoneMode"], self.TASK["Zone"], self.TASK["TempMode"])
+            logstr = logstr+" Temp calculated as "+str(temp)+"F. "
+            if temp >= self.TASK["Temp"]:
+                shouldRun = True
+                logstr = logstr+"Schedule calls for a RUN. "
+            else:
+                shouldRun = False
+            if self.DEBUG:
+                print "checkSchedule using a current temp of "+str(temp)+", task temp is "+str(self.TASK["Temp"])
+                print "shouldRun: "+str(shouldRun)
+                print "LOGSTR: "+logstr
+        # TODO: implement the rest of this
+
+        self.LOG_ENTRY = self.LOG_ENTRY + logstr
+        return shouldRun
+
+
+    def acControl(self, shouldRun):
+        """
+        This handles the final decision of whether or not to run the AC - when the compressor was last run. If it hasn't been running in the last 2 mintues, turn it on. Otherwise, do nothing.
+        """
+        # TODO: implement actual control
+
+        if self.DEBUG:
+            print "acControl called, shouldRun="+str(shouldRun)
+        
+        if os.path.exists(self.cool_run_file):
+            if shouldRun is False:
+                # need to stop the A/C
+                self.trc.SetOutputState(1, False) # turn off AC relay
+                print "Compressor Stopped..."
+                os.system("rm "+self.cool_run_file)
+                os.system("touch "+self.cool_stop_file)
+                self.LOG_ENTRY = self.LOG_ENTRY+"Compressor stopped. "
+                self.madeChanges = True
+                self.logger.MySQLLogStateChange(0, self.taskID, "ac", self.runType)
+            else:
+                self.LOG_ENTRY = self.LOG_ENTRY+"Compressor ALREADY RUNNING. "
+            # else AC should be running and already is
+            
+        else:
+            # compressor not running
+            if shouldRun is True:
+                if os.path.exists(self.cool_stop_file) and os.path.getmtime(self.cool_stop_file) >= (time.time() - 240):
+                    # ac was running in last 2 minutes
+                    self.logger.log(self, 5, "Compressor should have been started, but last stop time was within 120 seconds ("+str(os.path.getmtime(self.cool_stop_file))+").")
+                    self.logger.MySQLLogStateChange(2, self.taskID, "ac", self.runType)
+                    self.madeChanges = True
+                    print "Compressor ran in last 2 minutes, NOT running again."
+                else:
+                    # run the compressor
+                    self.trc.SetOutputState(1, True) # turn on the AC compressor relay
+                    print "Compressor Running..."
+                    os.system("rm "+self.cool_stop_file)
+                    os.system("touch "+self.cool_run_file)
+                    self.LOG_ENTRY = self.LOG_ENTRY+"Compressor started. "
+                    self.madeChanges = True
+                    self.logger.MySQLLogStateChange(1, self.taskID, "ac", self.runType)
+            # else compressor is not running and should not be running
+        
+    def fanControl(self, shouldRun):
+        """
+        This controls the system fan.
+        """
+
+        if self.DEBUG:
+            print "fanControl called, shouldRun="+str(shouldRun)
+        
+        if os.path.exists(self.fan_run_file):
+            if shouldRun is False:
+                # need to stop the fan
+                self.trc.SetOutputState(0, False) # stop the fan relay
+                print "Fan Stopped..."
+                os.system("rm "+self.fan_run_file)
+                os.system("touch "+self.fan_stop_file)
+                self.LOG_ENTRY = self.LOG_ENTRY+"Fan stopped. "
+                self.madeChanges = True
+                self.logger.MySQLLogStateChange(0, self.taskID, "fan", self.runType)
+            else:
+                self.LOG_ENTRY = self.LOG_ENTRY+"Fan ALREADY RUNNING. "
+                if self.DEBUG:
+                    print "Fan should run and is ALREADY RUNNING."
+            # else fan should be running and already is
+        else:
+            # fan not running
+            if shouldRun is True:
+                # run the fan
+                self.trc.SetOutputState(0, True) # start the fan relay
+                print "Fan Running..."
+                os.system("rm "+self.fan_stop_file)
+                os.system("touch "+self.fan_run_file)
+                self.LOG_ENTRY = self.LOG_ENTRY+"Fan started. "
+                self.madeChanges = True
+                self.logger.MySQLLogStateChange(1, self.taskID, "fan", self.runType)
+            # else fan is not running and should not be running
+
+    def checkRelays(self):
+        """
+        Checks the relay status and makes sure the appropriate files exist.
+        """
+        # having some problems, commenting out
+        """
+        # check fan (relay 0)
+        if self.trc.GetOutputState(0) is True:
+            # make sure the fan_stop_file is gone and the fan_run_file is there
+            if os.path.exists(self.fan_stop_file):
+                os.system("rm "+self.fan_stop_file)
+            if not os.path.exists(self.fan_run_file):
+                os.system("touch "+self.fan_run_file)                
+        else:
+            # make sure the fan_stop file is there and the fan_start file is gone
+            if os.path.exists(self.fan_run_file):
+                os.system("rm "+self.fan_run_file)
+            if not os.path.exists(self.fan_stop_file):
+                os.system("touch "+self.fan_stop_file)
+
+        # check AC (relay 1)
+        if self.trc.GetOutputState(1) is True:
+            # make sure the cool_stop_file is gone and the cool_run_file is there
+            if os.path.exists(self.cool_stop_file):
+                os.system("rm "+self.cool_stop_file)
+            if not os.path.exists(self.cool_run_file):
+                os.system("touch "+self.cool_run_file)                
+        else:
+            # make sure the cool_stop file is there and the cool_start file is gone
+            if os.path.exists(self.cool_run_file):
+                os.system("rm "+self.cool_run_file)
+            if not os.path.exists(self.cool_stop_file):
+                os.system("touch "+self.cool_stop_file)
+        """
+        if self.trc.GetOutputState(0) == True and self.trc.GetOutputState(1) == True:
+            self.RELAY_STATE = "cool"
+
+        self.logger.MySQLLogRelays(self.trc.GetOutputState(0), self.trc.GetOutputState(1), self.trc.GetOutputState(2))
+
+    def main(self):
+        """
+        The heart of everything. This is the function that calls everything else to eventually determine whether the system should be running or not and, if so, what it should be doing... And then make it do that.
+        """
+
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "--debug":
+                self.DEBUG = True
+
+        # TODO: need to poll relay outputs and update run/stop files accordingly.
+        self.display = CF635(None, "/dev/ttyUSB0") # init the display
+        self.logger = tosLogger()
+
+        self.runType = ""
+        shouldRun = False
+
+        self.checkRelays()
+
+        # get the temps
+        ZONES = tosZones()
+        myZones = ZONES.GetZones()
+        # unpickle the zone data
+        f2 = file(self.tempsFile, 'rb')
+        self.TEMPS = pickle.load(f2)
+        f2.close()
+
+        if self.DEBUG:
+            print "Temp calculated as "+str(self.CalculateTemp(0, 0, 1))
+
+        # check for a manual override
+        manOver = self.checkManOverrides()
+        # check schedule overrides
+        schedOver = self.checkSchedOverrides()
+        # check regular schedule
+        schedResult = self.checkSchedule()
+
+        overridden = False
+
+        # figure out if we should run, and if so, why
+        if manOver == 1:
+            # manual override says we should run
+            self.runType = "manual override"
+            shouldRun = True
+            overridden = True
+            if self.DEBUG:
+                print "main() manOver == 1"
+        elif manOver == -1 and overridden is False:
+            # manual override forces no run
+            self.runType = "manual override"
+            shouldRun = False
+            self.LOG_ENTRY = self.LOG_ENTRY + "MANUAL OVERRIDE squashed running. WILL NOT RUN."
+            self.madeChanges = True
+            overridden = True
+            if self.DEBUG:
+                print "main() manOver == -1 AND overridden is False"
+        elif schedOver == 1 and overridden is False:
+            # sched override forces run
+            self.runType = "schedule override"
+            shouldRun = True
+            overridden = True
+            if self.DEBUG:
+                print "man() schedOver == 1 AND overridden is False"
+        elif schedOver == -1 and overridden is False:
+            # sched override forces no run
+            shouldRun = False
+            self.LOG_ENTRY = self.LOG_ENTRY + "SCHED OVERRIDE squashed running. WILL NOT RUN."
+            self.madeChanges = True
+            if self.DEBUG:
+                print "main() schedOver == -1 AND overridden is False"
+            overridden = True
+        elif schedResult is True and overridden is False:
+            self.runType = "schedule"
+            shouldRun = True
+            if self.DEBUG:
+                print "main() elif schedResult is True AND overridden is False"
+
+        if shouldRun is True:
+            # run...
+            if self.DEBUG:
+                print "main() shouldRun is true, running control methods"
+            self.acControl(True)
+            self.fanControl(True)
+        else:
+            if self.DEBUG:
+                print "main(), else, shouldRun must be false, running control methods"
+            self.acControl(False)
+            self.fanControl(False)
+
+        if self.madeChanges == True:
+            self.LOG_ENTRY = self.LOG_ENTRY+" Temp calculated as "+str(self.CalculateTemp(0, 0, 1))+"."
+            self.logger.log(self, 6, self.LOG_ENTRY)
+        if self.DEBUG:
+            print "madeChanges is "+str(self.madeChanges)
+            print "LOG MESSAGE: "
+            print self.LOG_ENTRY
+
+        self.checkRelays()
+
+        # update the LCD
+        if self.DEBUG:
+            print "Updating LCD..."
+        self.display.writeCenteredLine(0, time.strftime("%H:%M:%S"))
+        print "RelayState: "+self.RELAY_STATE
+        if self.runType == "manual override":
+            self.display.writeCenteredLine(3, ">>MANUAL OVERRIDE<<")
+            # set LEDs 1 and 2 on
+            self.display.clearAllLEDs()
+            if self.RELAY_STATE == "cool":
+                # cooling
+                self.display.setLED(0, 0, 50) # set LED 0 green
+                self.display.setLED(1, 0, 50) # set LED 1 green
+                print "relaystate cool"
+            else:
+                # no system running
+                self.display.setLED(0, 1, 50) # set LED 0 red
+        elif self.RELAY_STATE == "cool":
+            self.display.writeCenteredLine(3, "COOL to "+str(self.TASK["Temp"])+chr(128)+"F")
+            self.display.setLED(3, 1, 50) # set LED 3 red
+            # set LEDs 1 and 2 on
+            self.display.clearAllLEDs()
+            self.display.setLED(0, 0, 50) # set LED 0 green
+            self.display.setLED(1, 0, 50) # set LED 1 green
+            print "relaystate cool"
+        else:
+            self.display.writeCenteredLine(3, "SET to "+str(self.TASK["Temp"])+chr(128)+"F")
+            self.display.clearAllLEDs()
+            self.display.setLED(0, 1, 50) # set LED 0 red
+
+if __name__ == '__main__':
+    myclass = tosControl()
+    myclass.main()
