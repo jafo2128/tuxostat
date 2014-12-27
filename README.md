@@ -9,7 +9,7 @@ This was a project of mine quite a few years ago to write a thermostat in Python
 
 I've discarded all history when I imported this to Git; I just imported a checkout of the CVS repository. What's here is actually a partial backup of the filesystem that ran this thing. The important parts are under:
 
-* https://github.com/jantman/tuxostat/blob/master/fs_backup/usr/lib/python2.4/site-packages/tuxostat
-* https://github.com/jantman/tuxostat/blob/master/fs_backup/home/tuxostat/bin
+* [/usr/lib/python2.4/site-packages/tuxostat](https://github.com/jantman/tuxostat/blob/master/fs_backup/usr/lib/python2.4/site-packages/tuxostat)
+* [/home/tuxostat/bin](https://github.com/jantman/tuxostat/blob/master/fs_backup/home/tuxostat/bin)
 
 It uses the [Phidgets Python libraries](http://www.phidgets.com/docs/Language_-_Python) (I'm sure ancient versions) to control the Phidgets USB relays, and uses something that [I wrote](https://github.com/jantman/tuxostat/blob/master/fs_backup/usr/lib/python2.4/site-packages/tuxostat/crystalfontz635usb.py) to control a [CrystalFontz CF635 USB LCD display](https://www.crystalfontz.com/product/XES635BKTMFKU).
